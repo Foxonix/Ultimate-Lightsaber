@@ -1,0 +1,162 @@
+
+; lightsaber.EZ
+; Foxonix / Metre Ideas and Design
+; www.foxonix.com
+
+; Program: Will Sakran
+; Created: 09.29.15
+; Public - Modify and share this program as you wish.
+
+; Program description
+;	This program controls various lightsaber sound effects for a
+;	realistic experience. This includes opening and closing sound
+;	effects, as well as swing and "clash" sound effects. LEDs
+;	are controlled in the program and are synced to the various sounds.
+
+; Hardware INPUTS
+; 	One button connected to pin P1.0 (lightsaber open function)
+;	One button connected to pin P1.1 (lightsaber swing function)
+;	One button connected to pin P1.2 (lightsaber clash function)
+;	One button connected to pin P1.3 (lightsaber close function)
+
+; Hardware OUTPUTS
+; 	Speaker connected to PWM speaker output
+;	LEDs connected to output pin P3.3
+
+
+; Set the device name
+[device]
+SNC21060
+
+
+; Specify the number of pins to be used as inputs.
+; At lease one input must be defined even if it is not used.
+[key]
+direct=4
+
+
+[files]
+lightsaber_close_12k.wav
+lightsaber_open_12k.wav
+steady_humming2_12k.wav
+swing1_12k.wav
+swing2_12k.wav
+clash1_12k.wav
+clash2_12k.wav
+clash3_12k.wav
+clash4_12k.wav
+
+[random]
+rand0=3			; random variable for selecting "clash" sound effects
+
+; Define the various input states for the program.
+; This describes which pins will have buttons, switches, or
+; other inputs attached to them, and defines when those
+; inputs will be active and inactive. At least one input
+; state must be defined even if it is not used.
+[input_states]
+; Port.Pin		P1.0	P1.1	P1.2	P1.3
+ready:			open	x	x	x
+active:			x	swing	clash	close
+locked_out:		x	x	x	x
+
+[output_states]
+LEDs_on: P3=[1 x x x]
+LEDs_off: P3=[0 x x x]
+LED_sync: P3=[Fv x x x]		; this output state will flash P3.3 with volume level
+
+
+; Define the routines (paths) that the program will use.
+; The init path is always called first on power up and reset.
+[paths]
+init:
+	& locked_out		; ignore inputs during init
+	& freq=12k		; set sample playback rate to 12 kHz
+	& m2=15			; register m2 will keep track of swing SFX
+	& ready			; enable the inputs
+	& end			; stop the program and enter low power mode
+
+
+open:
+	& locked_out			; ignore inputs when open sound effect is playing
+	& delay(0.04)
+	& X0=0				; initialize 8-bit register X0 to 0
+	& pwmio_en4			; enable PWM for pin P3.3
+	& {fade_in}p			; run LED fade-in in the background
+	& lightsaber_open_12k.wav	; play the saber opening SFX
+	& active			; enable the swing, clash, and close buttons
+	& humming			; jump to the humming label
+
+humming:
+	& leds_on			; LEDs are always full on during humming
+	& steady_humming2_12k.wav	; while no buttons pressed, loop on humming sound
+	& humming
+
+
+; when the "swing" button is pressed
+; select one of the swing sound effects based on the value of m2
+swing:
+	& leds_on			; LEDs are always full on during swing
+	& m2=m2+1
+	& m2:[swing1_sfx swing2_sfx swing1_sfx swing1_sfx swing2_sfx swing1_sfx swing2_sfx] m2=15 swing
+
+swing1_sfx:
+	& swing1_12k.wav		; play swing sound effect
+	& humming			; then jump back to humming
+
+swing2_sfx:
+	& swing2_12k.wav		; play swing sound effect
+	& humming			; then jump back to humming
+
+
+; when the "clash" button is pressed
+; randomly select one of the clash sound effects
+clash:
+	& LED_sync			; set the LEDs to flash with the volume level of the clash SFX
+	& rand0:[clash1_sfx clash2_sfx clash3_sfx clash4_sfx]
+
+clash1_sfx:
+	& clash1_12k.wav		; play clash sound effect
+	& humming			; then jump back to humming sound
+
+clash2_sfx:
+	& clash2_12k.wav		; play clash sound effect
+	& humming			; then jump back to humming sound
+
+clash3_sfx:
+	& clash3_12k.wav		; play clash sound effect
+	& humming			; then jump back to humming sound
+
+clash4_sfx:
+	& clash4_12k.wav		; play clash sound effect
+	& humming			; then jump back to humming sound
+
+close:
+	& locked_out			; ignore all of the buttons
+	& stop_v			; stop the current audio file
+	& {fade_out}p			; run LED fade-out in the background
+	& lightsaber_close_12k.wav	; play the saber "close" sound effect
+	& delay(0.04)
+	& ready				; enable the "open" button
+	& delay(0.50)			; wait a bit to make sure the LEDs have faded out
+	& pwmio_dis4			; disable PWM for pin P3.3
+	& end
+
+
+; background functions for fading the LEDs in and out
+{fade_in}p:
+	& pwmio4=X0			; set PWM on pin P3.3 to the value in X0
+	& delay(0.010)			; delay to control fade in time
+	& X0?254:stop_fade		; if upper PWM is reached (254), jump to stop_fade: label
+	& X0=X0+1			; if not, increment PWM
+	& fade_in			; continue fading in
+
+{fade_out}p:
+	& pwmio4=X0			; set PWM on pin P3.3 to the value in X0
+	& delay(0.010)			; delay to control fade in time
+	& X0?0:stop_fade		; if min PWM is reached (0), jump to stop_fade: label
+	& X0=X0-2			; if not, decrement PWM
+	& fade_out			; continue fading out
+
+stop_fade:
+	& stop_p			; stop the backround equation
